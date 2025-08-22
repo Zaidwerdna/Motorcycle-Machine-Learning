@@ -34,9 +34,9 @@ def bucketizer(value, bucket_size, prefix):
         return ""
 
 BUCKET_MAP = {
-    "year": 5,
+    "year": 1,
     "rating": 1,
-    "displacement_ccm": 100,
+    "displacement_ccm": 150,
     "power_hp": 20,
     "torque_nm": 25,
     "bore_mm": 15,
@@ -69,8 +69,6 @@ def build_feature_token(row):
 
 df["feature_tokens"] = df.apply(build_feature_token, axis=1)
 
-print(df.head(100).to_string(index=False))
-
 vectorizer = TfidfVectorizer(min_df=1)
 matrix = vectorizer.fit_transform(df["feature_tokens"])
 
@@ -78,7 +76,7 @@ knn = NearestNeighbors(metric = "cosine", algorithm = "brute")
 knn.fit(matrix)
 
 SIMPLE_COLUMNS = [
-    "brand", "model", "year", "category", "rating",
+    "brand", "model", "year", "category",
     "displacement_ccm", "color_options", "seat_height_mm"
 ]
 INTERMEDIATE_COLUMNS = [
@@ -97,7 +95,6 @@ PROMPT_SIMPLE = {
     "model": "Do you have a specific model in mind? ",
     "year": "What model year (or range)? ",
     "category": "What category of motorcycle? (e.g., sport, cruiser, touring) ",
-    "rating": "Minimum rating (1-5)? ",
     "displacement_ccm": "Engine size in cc? (e.g.,300, 600, 1000) ",
     "color_options": "Preferred color? (e.g., blue, black) ",
     "seat_height_mm": "Seat height in mm? (e.g., 810). This is important for short/tall riders.",
@@ -173,12 +170,6 @@ def collect_answers(level_choice, input_fn=input):
     return answers
 
 def tokens_from_answers(answers):
-    """
-    Turn user answers into TF-IDF tokens.
-    - If column is numeric (in BUCKET_MAP): bucketize a single number found.
-    - Otherwise: make '<col>_<scrubbed>' token.
-    - Empty answers are skipped.
-    """
     tokens = []
     i = 0
     for col in answers:
@@ -199,10 +190,7 @@ def tokens_from_answers(answers):
                         # add if not already present
                         if tok not in tokens:
                             tokens.append(tok)
-            # move to next column either way
             continue
-
-        # plain text token
         cleaned_text = text_scrubber(raw)
         if cleaned_text != "":
             tok2 = col + "_" + cleaned_text
@@ -215,9 +203,6 @@ def tokens_from_answers(answers):
     return " ".join(tokens)
 
 def run_qna_by_level(level_choice, top_k=5, input_fn=input):
-    """
-    Ask questions for the chosen level, build query tokens, run KNN, print results.
-    """
     answers = collect_answers(level_choice, input_fn)
     query_tokens = tokens_from_answers(answers)
 
@@ -225,7 +210,6 @@ def run_qna_by_level(level_choice, top_k=5, input_fn=input):
         print("\nNo useful tokens from your answers. Try at least one value.")
         return
 
-    # Vectorize and query KNN
     q_vec = vectorizer.transform([query_tokens])
     n = len(df)
     if top_k < n:
@@ -236,11 +220,9 @@ def run_qna_by_level(level_choice, top_k=5, input_fn=input):
     distances, indices = knn.kneighbors(q_vec, n_neighbors=n_neighbors)
     sims = 1.0 - distances[0]
 
-    # Build result table
     hits = df.iloc[indices[0]].copy()
     hits.insert(0, "similarity", np.round(sims, 4))
 
-    # Choose columns to show if they exist
     show_cols = []
     candidates = [
         "similarity","brand","model","year","category",
@@ -254,9 +236,8 @@ def run_qna_by_level(level_choice, top_k=5, input_fn=input):
     print("\nQuery tokens: " + query_tokens)
     print(hits[show_cols].to_string(index=False))
 
-# ------------------ EXAMPLE ENTRY POINT ------------------
-level = input("Choose level (1=Simple, 2=Intermediate, 3=Advanced): ")
-run_qna_by_level(level, top_k=5)
+level = input("Choose level: 1 = Simple, 2=Intermediate, 3=Advanced): ")
+run_qna_by_level(level, top_k=10)
 
 
 
