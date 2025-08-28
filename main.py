@@ -1,11 +1,29 @@
+import os
+import sys
+import subprocess
 import pandas as pd
 import math
 import re
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.neighbors import NearestNeighbors
+import matplotlib.pyplot as plt
 
-df = pd.read_csv('all_bikez_curated.csv')
+def resource_path(relative_path):
+    base_path = getattr(sys, "_MEIPASS", os.path.abspath("."))
+    return os.path.join(base_path, relative_path)
+
+def open_file(path: str):
+    if sys.platform == "win32":
+        os.startfile(path)
+        return
+    elif sys.platform == "darwin":
+        subprocess.call(["open", path])
+        return
+
+CSV_PATH = resource_path('all_bikez_curated.csv')
+
+df = pd.read_csv(CSV_PATH)
 df.columns = (
     df.columns
         .str.strip()
@@ -49,23 +67,50 @@ BUCKET_MAP = {
 
 def build_feature_token(row):
     tokens = []
-
     for column_name, row_value in row.items():
         if pd.isna(row_value):
             continue
-
         if column_name in BUCKET_MAP and number_checker(row_value):
             size = BUCKET_MAP[column_name]
             token = bucketizer(row_value, size, column_name)
             if token:
                 tokens.append(token)
             continue
-
         clean_token = text_scrubber(row_value)
         if clean_token:
             tokens.append(column_name + "_" + clean_token)
-
     return " ".join(tokens)
+
+def display_visuals():
+    plt.figure(figsize=(10, 10))
+    df["category"].value_counts().head(20).plot(kind="bar")
+    plt.title("Motorcycles by Category")
+    plt.xlabel("Category")
+    plt.ylabel("Count")
+    plt.savefig("category_barchart.png")
+    plt.close()
+    open_file(resource_path("category_barchart.png"))
+
+    plt.figure(figsize=(10, 10))
+    plt.scatter(df["displacement_ccm"], df["power_hp"], s = 10, alpha = 0.3)
+    plt.title("Power_scatterplot")
+    plt.xlabel("Displacement")
+    plt.ylabel("Power")
+    plt.savefig("power_scatterplot.png")
+    plt.close()
+    open_file(resource_path("power_scatterplot.png"))
+
+    plt.figure(figsize=(15, 15))
+    top_brands = df["brand"].value_counts().head(10)
+    other = df["brand"].value_counts().iloc[10:].sum()
+    if other > 0:
+        top_brands["Other"] = other
+    plt.pie(top_brands, labels=top_brands.index, autopct="%1.1f%%", startangle=90)
+    plt.title("Top 10 Brands")
+    plt.axis("equal")
+    plt.savefig("top_brands.png")
+    plt.close()
+    open_file(resource_path("top_brands.png"))
 
 df["feature_tokens"] = df.apply(build_feature_token, axis=1)
 
@@ -125,30 +170,19 @@ PROMPT_ADVANCED = {
 DIGIT_TO_WORD = {"1":"one", "2":"two", "3":"three", "4":"four", "5":"five", "6":"six", "7":"seven", "8":"eight"}
 
 def collect_answers(level_choice, input_fn=input):
-    """
-    Ask questions based on the chosen level.
-    level_choice: '1'/'simple', '2'/'intermediate', '3'/'advanced'
-    Returns a dict {column: answer_string}.
-    """
     print("\n(Press Enter to skip any question.)")
     answers = {}
-
-    # Decide which columns and prompts to use without dict merging
     if level_choice == "1" or level_choice.lower() == "simple":
         columns = SIMPLE_COLUMNS
         prompts = PROMPT_SIMPLE
     elif level_choice == "2" or level_choice.lower() == "intermediate":
-        # simple + intermediate
         columns = SIMPLE_COLUMNS + INTERMEDIATE_COLUMNS
         prompts = {}
-        # copy prompts in simple
         for k in SIMPLE_COLUMNS:
             prompts[k] = PROMPT_SIMPLE[k]
-        # add prompts in intermediate
         for k in INTERMEDIATE_COLUMNS:
             prompts[k] = PROMPT_INTERMEDIATE[k]
     else:
-        # simple + intermediate + advanced
         columns = SIMPLE_COLUMNS + INTERMEDIATE_COLUMNS + ADVANCED_COLUMNS
         prompts = {}
         for k in SIMPLE_COLUMNS:
@@ -157,8 +191,6 @@ def collect_answers(level_choice, input_fn=input):
             prompts[k] = PROMPT_INTERMEDIATE[k]
         for k in ADVANCED_COLUMNS:
             prompts[k] = PROMPT_ADVANCED[k]
-
-    # Ask questions in order
     for col in columns:
         question = prompts[col]
         value = input_fn(question)
@@ -166,7 +198,6 @@ def collect_answers(level_choice, input_fn=input):
             value = ""
         value = value.strip()
         answers[col] = value
-
     return answers
 
 def tokens_from_answers(answers):
@@ -176,8 +207,6 @@ def tokens_from_answers(answers):
         raw = answers[col]
         if raw == "":
             continue
-
-        # numeric/bucket columns
         if col in BUCKET_MAP:
             cleaned = raw.replace(",", " ")
             match = re.search(r"(\d+(?:\.\d+)?)", cleaned)
@@ -187,7 +216,6 @@ def tokens_from_answers(answers):
                     val = float(num_str)
                     tok = bucketizer(val, BUCKET_MAP[col], col)
                     if tok:
-                        # add if not already present
                         if tok not in tokens:
                             tokens.append(tok)
             continue
@@ -196,33 +224,25 @@ def tokens_from_answers(answers):
             tok2 = col + "_" + cleaned_text
             if tok2 not in tokens:
                 tokens.append(tok2)
-
         i = i + 1
-
-    # join space-separated
     return " ".join(tokens)
 
 def run_qna_by_level(level_choice, top_k=5, input_fn=input):
     answers = collect_answers(level_choice, input_fn)
     query_tokens = tokens_from_answers(answers)
-
     if query_tokens == "":
         print("\nNo useful tokens from your answers. Try at least one value.")
         return
-
     q_vec = vectorizer.transform([query_tokens])
     n = len(df)
     if top_k < n:
         n_neighbors = top_k
     else:
         n_neighbors = n
-
     distances, indices = knn.kneighbors(q_vec, n_neighbors=n_neighbors)
     sims = 1.0 - distances[0]
-
     hits = df.iloc[indices[0]].copy()
     hits.insert(0, "similarity", np.round(sims, 4))
-
     show_cols = []
     candidates = [
         "similarity","brand","model","year","category",
@@ -232,13 +252,29 @@ def run_qna_by_level(level_choice, top_k=5, input_fn=input):
     for c in candidates:
         if c in hits.columns:
             show_cols.append(c)
-
     print("\nQuery tokens: " + query_tokens)
     print(hits[show_cols].to_string(index=False))
 
-level = input("Choose level: 1 = Simple, 2=Intermediate, 3=Advanced): ")
-run_qna_by_level(level, top_k=10)
+def main_menu():
+    while True:
+        print("\n ---- Welcome to the Bikes and Bids Motorcycle recommendation tool! ----")
+        print("\nChoose an option:")
+        print("\n 1. Run Recommendation Tool")
+        print("\n 2. Visualize Data")
+        print("\n 3. Exit")
 
+        menu_choice = input()
+        if menu_choice == "1":
+            level = input("\nChoose a level based on your overall motorcycle knowledge."
+                          "\n(1 = Simple, 2 = Intermediate, 3 = Advanced): ")
+            run_qna_by_level(level, top_k=10)
+        if menu_choice == "2":
+            display_visuals()
+        if menu_choice == "3":
+            break
+
+if __name__ == "__main__":
+    main_menu()
 
 
 
