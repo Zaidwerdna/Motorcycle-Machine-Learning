@@ -23,7 +23,7 @@ def open_file(path: str):
 
 CSV_PATH = resource_path('all_bikez_curated.csv')
 
-df = pd.read_csv(CSV_PATH)
+df = pd.read_csv(CSV_PATH, low_memory=False)
 df.columns = (
     df.columns
         .str.strip()
@@ -82,35 +82,42 @@ def build_feature_token(row):
     return " ".join(tokens)
 
 def display_visuals():
-    plt.figure(figsize=(10, 10))
+    import os
+    outdir = os.path.abspath("visualizations")
+    os.makedirs(outdir, exist_ok=True)
+
+    plt.figure(figsize=(18, 18))
     df["category"].value_counts().head(20).plot(kind="bar")
     plt.title("Motorcycles by Category")
     plt.xlabel("Category")
     plt.ylabel("Count")
-    plt.savefig("category_barchart.png")
+    p1 = os.path.join(outdir, "category_barchart.png")
+    plt.savefig(p1, dpi=150, bbox_inches="tight")
     plt.close()
-    open_file(resource_path("category_barchart.png"))
+    open_file(p1)
 
     plt.figure(figsize=(10, 10))
-    plt.scatter(df["displacement_ccm"], df["power_hp"], s = 10, alpha = 0.3)
+    plt.scatter(df["displacement_ccm"], df["power_hp"], s=10, alpha=0.3)
     plt.title("Power_scatterplot")
     plt.xlabel("Displacement")
     plt.ylabel("Power")
-    plt.savefig("power_scatterplot.png")
+    p2 = os.path.join(outdir, "power_scatterplot.png")
+    plt.savefig(p2, dpi=150, bbox_inches="tight")
     plt.close()
-    open_file(resource_path("power_scatterplot.png"))
+    open_file(p2)
 
     plt.figure(figsize=(15, 15))
     top_brands = df["brand"].value_counts().head(10)
     other = df["brand"].value_counts().iloc[10:].sum()
     if other > 0:
         top_brands["Other"] = other
-    plt.pie(top_brands, labels=top_brands.index, autopct="%1.1f%%", startangle=90)
+    plt.pie(top_brands.values, labels=top_brands.index, autopct="%1.1f%%", startangle=90)
     plt.title("Top 10 Brands")
     plt.axis("equal")
-    plt.savefig("top_brands.png")
+    p3 = os.path.join(outdir, "top_brands.png")
+    plt.savefig(p3, dpi=150, bbox_inches="tight")
     plt.close()
-    open_file(resource_path("top_brands.png"))
+    open_file(p3)
 
 df["feature_tokens"] = df.apply(build_feature_token, axis=1)
 
@@ -258,10 +265,10 @@ def run_qna_by_level(level_choice, top_k=5, input_fn=input):
 def main_menu():
     while True:
         print("\n ---- Welcome to the Bikes and Bids Motorcycle recommendation tool! ----")
-        print("\nChoose an option:")
-        print("\n 1. Run Recommendation Tool")
-        print("\n 2. Visualize Data")
-        print("\n 3. Exit")
+        print("\nChoose an option: ")
+        print("\n 1. Run Recommendation Tool ")
+        print("\n 2. Visualize Data" )
+        print("\n 3. Exit ")
 
         menu_choice = input()
         if menu_choice == "1":
