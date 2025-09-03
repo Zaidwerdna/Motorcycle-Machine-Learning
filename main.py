@@ -254,7 +254,7 @@ def run_qna_by_level(level_choice, top_k=5, input_fn=input):
     candidates = [
         "similarity","brand","model","year","category",
         "displacement_ccm","power_hp","torque_nm","engine_cylinder",
-        "seat_height_mm","dry_weight_kg","wheelbase_mm","color_options"
+        "seat_height_mm","dry_weight_kg"
     ]
     for c in candidates:
         if c in hits.columns:
